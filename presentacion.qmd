@@ -1,0 +1,430 @@
+---
+title: "¿Cómo evoluciona un sistema?"
+subtitle: "Modelos exponenciales, estados, incertidumbre y restricciones"
+date: ""
+include-in-header: controles.html
+---
+
+## 0.6 · ¿Qué nos dice la velocidad de cambio?
+
+```{python}
+#| label: base-notebook
+#| include: false
+from pathlib import Path
+import re
+
+def codigo_celda(etiqueta):
+    documento = Path("presentacion.qmd").read_text(encoding="utf-8")
+    patron = r"^`{3}\{python\}\n#\| label: " + re.escape(etiqueta) + r"\n(.*?)^`{3}\s*$"
+    return re.search(patron, documento, re.M | re.S).group(1)
+
+import numpy as np
+import sympy as sp
+import matplotlib.pyplot as plt
+from scipy.integrate import quad, solve_ivp
+from scipy.optimize import minimize, minimize_scalar
+import itertools, heapq
+
+AZUL, NARANJA, VERDE, ROJO, GRIS = "#2E6FB0", "#C8701E", "#2F7D54", "#B23A3A", "#8A94A0"
+plt.rcParams.update({"figure.dpi": 110, "axes.grid": True, "grid.alpha": 0.25,
+                     "axes.spines.top": False, "axes.spines.right": False})
+def ok(msg):
+    print("✔", msg)
+t = sp.symbols("t")
+```
+
+```{python}
+#| include: false
+import numpy as np
+import sympy as sp
+import matplotlib.pyplot as plt
+from scipy.integrate import solve_ivp
+from scipy.optimize import minimize
+
+verde = "#006659"
+naranja = "#a3441e"
+plt.rcParams.update({
+    "font.size": 13, "axes.spines.top": False, "axes.spines.right": False,
+    "figure.facecolor": "none", "axes.facecolor": "none",
+    "axes.labelcolor": "#192f42", "svg.fonttype": "none"
+})
+
+def curva(tiempos, valores, eje_x, eje_y, punto, etiqueta, color, ambiente=None):
+    fig, ax = plt.subplots(figsize=(6.1, 3.8), layout="constrained")
+    ax.plot(tiempos, valores, color=color, linewidth=3)
+    if ambiente is not None:
+        ax.axhline(ambiente, linestyle="--", color="#546570")
+        ax.text(1, ambiente + 2, "Ambiente · 25 °C", color="#394753")
+    ax.scatter(*punto, s=65, color=color, zorder=3)
+    ax.annotate(etiqueta, punto, xytext=(10, 12), textcoords="offset points",
+                color=color, fontweight="bold")
+    ax.set(xlabel=eje_x, ylabel=eje_y, xlim=(0, tiempos[-1]))
+    ax.grid(axis="y", alpha=.16)
+    plt.show()
+```
+
+
+
+:::: {.columns}
+::: {.column width="46%"}
+Partimos de $x(0)=8$. En cada instante, la pendiente es proporcional al valor que queda.
+
+$$\dot x=-0{,}5x$$
+
+Al inicio la pendiente es $-4$. Cuando $x=4$, la pendiente es $-2$. Así se explica que la curva se aplane.
+:::
+::: {.column width="54%"}
+```{python}
+t = sp.symbols("t")
+x = sp.Function("x")
+sol = sp.dsolve(sp.Eq(x(t).diff(t), -x(t)/2), ics={x(0): 8})
+num = solve_ivp(lambda t, z: -0.5*z, (0, 6), [8.0], dense_output=True,
+                rtol=1e-9, atol=1e-11)
+exacto = float(sol.rhs.subs(t, 2))
+assert abs(num.sol(2)[0] - exacto) < 1e-6
+tiempo = np.linspace(0, 6, 240)
+curva(tiempo, num.sol(tiempo)[0], "Tiempo", "Estado x",
+      (2, exacto), "x(2) ≈ 2,94", verde)
+```
+:::
+::::
+
+::: {.notes}
+Señalar el comienzo de la curva. Derivar la solución simbólica x(t) = 8 exp(−0,5t) devuelve −0,5x y al sustituir t = 0 se obtiene 8. El notebook comprueba la misma predicción integrando la ecuación con solve_ivp. En t = 2 los dos métodos dan 2,9430. El coeficiente 0,5 expresa una tasa instantánea.
+:::
+
+## 0.6 · ¿Cuándo se duplica una cantidad?
+
+Para $x(0)=x_0>0$, la regla $\dot x=ax$ tiene solución $x(t)=x_0e^{at}$.
+
+| Si la tasa es… | La trayectoria… |
+|:---|:---|
+| $a>0$ | crece y se duplica cada $\ln(2)/a$ unidades de tiempo. |
+| $a=0$ | conserva el valor inicial. |
+| $a<0$ | decae hacia cero y se reduce a la mitad cada $\ln(2)/\lvert a\rvert$. |
+
+Con $a=0{,}1$ por día, la duplicación tarda **6,93 días**.
+
+::: {.notes}
+Para obtener el tiempo, igualar el valor final a dos veces el inicial. Al cancelar x₀ queda exp(at) = 2. Tomar logaritmos permite despejar t. La misma cuenta con un medio explica la semivida del ejemplo anterior.
+:::
+
+
+## 0.6 · Dos maneras de calcular x(2) {.demostracion}
+
+`dsolve` obtiene la fórmula exacta. `solve_ivp` integra la misma ecuación desde $x(0)=8$. La línea con `assert` comprueba que en $t=2$ la diferencia es menor que $10^{-6}$.
+
+```{python}
+#| label: nb-0-6
+#| echo: true
+#| code-overflow: wrap
+#| eval: false
+xt = sp.Function("x")
+sol = sp.dsolve(sp.Eq(xt(t).diff(t), -sp.Rational(1, 2)*xt(t)), ics={xt(0): 8})
+print("Solución simbólica:", sol)
+num = solve_ivp(lambda s, z: -0.5*z, (0, 6), [8.0], dense_output=True, rtol=1e-9)
+print(f"x(2) numérico = {num.sol(2)[0]:.4f}   exacto = {8*np.exp(-1):.4f}")
+print(f"Tiempo de duplicación con a = 0,1: ln2/0,1 = {np.log(2)/0.1:.2f} días")
+assert abs(num.sol(2)[0] - 8*np.exp(-1)) < 1e-6
+ok("la solución numérica coincide con la exacta")
+```
+
+<a class="accion" href="#salida-0-6" data-modo="ejecutar" data-seccion="0.6">▶ Ejecutar código</a>
+<a class="accion secundaria" href="#salida-0-6" data-modo="guardada">Ver salida guardada</a>
+
+::: {.notes}
+Compare los dos valores impresos de x(2). Ambos se redondean a 2,9430. La línea sobre duplicación corresponde al caso de crecimiento con a = 0,1.
+:::
+
+## 0.6 · Resultado {#salida-0-6 .resultado}
+
+<p class="estado-python" role="status">Salida guardada al generar la presentación</p>
+<div class="respuesta-python"></div>
+
+```{python}
+#| echo: false
+exec(codigo_celda("nb-0-6"))
+```
+
+
+## 0.7 · ¿Qué cambia en un sprint?
+
+El estado reúne la **deuda técnica** $D$ y los **defectos abiertos** $B$. Cada fila de la matriz calcula una componente del siguiente estado.
+
+$$
+\begin{pmatrix}1{,}04 & 0\\0{,}1 & 0{,}9\end{pmatrix}
+\begin{pmatrix}20\\5\end{pmatrix}
+=
+\begin{pmatrix}20{,}8\\6{,}5\end{pmatrix}
+$$
+
+**Deuda** · Se multiplica por 1,04 en un sprint.
+
+**Defectos** · Quedan $0{,}9(5)=4{,}5$ y la deuda aporta $0{,}1(20)=2$.
+
+::: {.notes}
+Leer el vector de arriba abajo. En la primera fila, el cero indica que los defectos no intervienen en la actualización de la deuda. En la segunda fila sí aparece el efecto de la deuda sobre los defectos. Los valores fraccionarios representan la predicción del modelo.
+:::
+
+## 0.7 · ¿Cuándo decae un modo del sistema?
+
+En una dirección propia, $Av=\lambda v$. Ambas matrices del notebook son triangulares y sus autovalores se leen en la diagonal.
+
+| Modelo | Autovalores | Comportamiento |
+|:---|:---|:---|
+| Por sprints, $x_{k+1}=Ax_k$ | $1{,}04$ y $0{,}9$ | Un modo crece porque $1{,}04>1$. |
+| Continuo, $\dot x=A_2x$ | $-1$ y $-2$ | Ambos modos decaen como $e^{-t}$ y $e^{-2t}$. |
+
+
+
+::: {.notes}
+Un modo discreto se multiplica por λ en cada paso, por eso decae si su módulo es menor que uno. En tiempo continuo el factor es exp(λt), que decae cuando la parte real de λ es negativa. El valor 1,04 basta para que el origen del primer sistema sea inestable.
+:::
+
+
+## 0.7 · Un sprint en dos operaciones {.demostracion}
+
+`A @ xv` calcula la deuda y los defectos del siguiente sprint. `eigvals` obtiene los autovalores de ambas matrices. `allclose` verifica el resultado del producto y los autovalores de la segunda matriz.
+
+```{python}
+#| label: nb-0-7
+#| echo: true
+#| code-overflow: wrap
+#| eval: false
+A = np.array([[1.04, 0.0], [0.1, 0.9]]); xv = np.array([20.0, 5.0])
+print("A·x =", A @ xv)
+print("Autovalores de A (deuda/defectos):", np.linalg.eigvals(A))
+A2 = np.array([[-1.0, 1.0], [0.0, -2.0]])
+print("Autovalores de [[-1,1],[0,-2]]:", np.linalg.eigvals(A2))
+assert np.allclose(A @ xv, [20.8, 6.5]) and np.allclose(sorted(np.linalg.eigvals(A2)), [-2, -1])
+ok("A·x = (20,8; 6,5); autovalores −1 y −2")
+```
+
+<a class="accion" href="#salida-0-7" data-modo="ejecutar" data-seccion="0.7">▶ Ejecutar código</a>
+<a class="accion secundaria" href="#salida-0-7" data-modo="guardada">Ver salida guardada</a>
+
+::: {.notes}
+Lea las dos entradas del nuevo estado: 20,8 de deuda y 6,5 defectos. Distinga el criterio discreto para A del continuo para A2.
+:::
+
+## 0.7 · Resultado {#salida-0-7 .resultado}
+
+<p class="estado-python" role="status">Salida guardada al generar la presentación</p>
+<div class="respuesta-python"></div>
+
+```{python}
+#| echo: false
+exec(codigo_celda("nb-0-7"))
+```
+
+
+## 0.8 · ¿Cuánto cuesta quedarse sin GPU?
+
+| Demanda $w$ (GPU) | 0 | 1 | 2 | 3 |
+|:---|---:|---:|---:|---:|
+| Probabilidad | 0,1 | 0,3 | 0,4 | 0,2 |
+| Coste por faltantes (USD) | 0 | 0 | 0 | 3 |
+
+La demanda media es $0(0{,}1)+1(0{,}3)+2(0{,}4)+3(0{,}2)=\mathbf{1{,}7}$ GPU.
+
+Solo falta una GPU cuando se solicitan tres. Por tanto, el coste esperado por faltantes es **3 USD × 0,2 = 0,60 USD**.
+
+
+
+::: {.notes}
+Pedir al público que mire la última columna. Calcular el coste usando solo la demanda media daría cero, porque 1,7 es menor que 2. Debemos calcular el coste en cada escenario y ponderarlo. La simulación reproduce esos escenarios con sus probabilidades y aproxima el resultado exacto.
+:::
+
+
+## 0.8 · Del promedio exacto a la simulación {.demostracion}
+
+`w*pw` pondera cada demanda. `maximum(w - 2, 0)` cuenta las GPU faltantes. `choice` toma 200 000 muestras con esas probabilidades para comparar las medias simuladas con los valores exactos.
+
+```{python}
+#| label: nb-0-8
+#| echo: true
+#| code-overflow: wrap
+#| eval: false
+w = np.array([0, 1, 2, 3]); pw = np.array([0.1, 0.3, 0.4, 0.2])
+Ew = np.sum(w*pw); Efalta = np.sum(pw*3*np.maximum(w - 2, 0))
+# Simulación de Monte Carlo: promediar muchos futuros posibles
+muestras = np.random.default_rng(0).choice(w, size=200_000, p=pw)
+print(f"E[w] = {Ew:.2f}  (simulado {muestras.mean():.3f})")
+print(f"E[3·máx(w−2,0)] = {Efalta:.2f}  (simulado {np.mean(3*np.maximum(muestras - 2, 0)):.3f})")
+assert abs(Ew - 1.7) < 1e-12 and abs(Efalta - 0.6) < 1e-12
+ok("E[w] = 1,7 y coste esperado de faltantes = 0,6")
+```
+
+<a class="accion" href="#salida-0-8" data-modo="ejecutar" data-seccion="0.8">▶ Ejecutar código</a>
+<a class="accion secundaria" href="#salida-0-8" data-modo="guardada">Ver salida guardada</a>
+
+::: {.notes}
+La semilla 0 permite repetir el experimento con los mismos resultados. El coste se calcula por escenario antes de promediar.
+:::
+
+## 0.8 · Resultado {#salida-0-8 .resultado}
+
+<p class="estado-python" role="status">Salida guardada al generar la presentación</p>
+<div class="respuesta-python"></div>
+
+```{python}
+#| echo: false
+exec(codigo_celda("nb-0-8"))
+```
+
+
+## 0.9 · ¿Cómo repartir cuatro unidades al menor coste?
+
+Minimizamos $x^2+y^2$ con la restricción $x+y=4$.
+
+$$L=x^2+y^2+\lambda(x+y-4)$$
+
+1. Las derivadas respecto de $x$ e $y$ dan $2x+\lambda=0$ y $2y+\lambda=0$.
+2. Ambas ecuaciones implican $x=y$. Como deben sumar cuatro, **$x=y=2$**.
+3. El multiplicador vale $\lambda=-4$ y el coste mínimo es **8**.
+
+::: {.notes}
+Comprobar el resultado con una sola variable. Sustituir y = 4 − x transforma el coste en 2(x − 2)² + 8, cuyo mínimo se alcanza en x = 2. El multiplicador fuerza a considerar únicamente repartos que cumplen la igualdad.
+:::
+
+## 0.9 · ¿Y si el total exigido sube a cinco?
+
+Para un total $b$, el reparto óptimo es $x=y=b/2$ y su coste es $V(b)=b^2/2$.
+
+| Total exigido | Reparto óptimo | Coste mínimo |
+|:---|:---|---:|
+| 4 | 2 y 2 | 8 |
+| 5 | 2,5 y 2,5 | 12,5 |
+
+Con la convención $L=x^2+y^2+\lambda(x+y-b)$, la sensibilidad local es $V'(4)=-\lambda=4$. El aumento exacto de 4 a 5 es **4,5**.
+
+
+
+::: {.notes}
+Explicar el precio sombra como la pendiente de la curva del coste óptimo. Cerca de cuatro, aumentar el total en una cantidad pequeña Δb añade aproximadamente 4Δb al coste. Para un salto de una unidad la pendiente cambia en el trayecto, de ahí la diferencia entre 4 y 4,5.
+:::
+
+
+## 0.9 · Resolver el reparto y medir su coste {.demostracion}
+
+`diff` deriva el lagrangiano respecto de $x$, $y$ y $\lambda$. `solve` resuelve las tres condiciones. Después, `minimize` recalcula el coste al exigir que el total sea cinco.
+
+```{python}
+#| label: nb-0-9
+#| echo: true
+#| code-overflow: wrap
+#| eval: false
+xs, ys, lam = sp.symbols("x y lambda")
+L = xs**2 + ys**2 + lam*(xs + ys - 4)
+sol = sp.solve([sp.diff(L, v_) for v_ in (xs, ys, lam)], (xs, ys, lam), dict=True)[0]
+print("Solución:", sol, "  coste mínimo:", (xs**2 + ys**2).subs(sol))
+# precio sombra: relajar la restricción a x + y = 5
+v5 = minimize(lambda z: z[0]**2 + z[1]**2, [0, 0], constraints={"type": "eq", "fun": lambda z: z[0] + z[1] - 5}).fun
+print(f"Con x + y = 5 el mínimo es {v5:.2f}: subió {v5 - 8:.2f} ≈ |λ| = 4")
+assert sol[lam] == -4
+ok("x = y = 2, λ = −4")
+```
+
+<a class="accion" href="#salida-0-9" data-modo="ejecutar" data-seccion="0.9">▶ Ejecutar código</a>
+<a class="accion secundaria" href="#salida-0-9" data-modo="guardada">Ver salida guardada</a>
+
+::: {.notes}
+Muestre el coste inicial de 8 y el nuevo de 12,5. El cambio exacto vale 4,5. El precio sombra de 4 es una aproximación local para aumentos pequeños del total.
+:::
+
+## 0.9 · Resultado {#salida-0-9 .resultado}
+
+<p class="estado-python" role="status">Salida guardada al generar la presentación</p>
+<div class="respuesta-python"></div>
+
+```{python}
+#| echo: false
+exec(codigo_celda("nb-0-9"))
+```
+
+
+## 1.1 · ¿Cuántos usuarios predice el modelo?
+
+:::: {.columns}
+::: {.column width="46%"}
+Partimos de **1 000 usuarios** con una tasa continua de crecimiento de 0,1 por día.
+
+$$x(t)=1000e^{0{,}1t}$$
+
+Al día 10 se esperan **2 718 usuarios**. Al día 100 el modelo proyecta unos 22 millones. Esa extrapolación supone que el mercado puede seguir creciendo sin saturarse.
+:::
+::: {.column width="54%"}
+```{python}
+tt = np.linspace(0, 20, 400)
+usuarios = 1000*np.exp(0.1*tt)
+curva(tt, usuarios, "Tiempo (días)", "Usuarios",
+      (10, 1000*np.e), "2 718", verde)
+```
+:::
+::::
+
+::: {.notes}
+Vincular esta curva con la duplicación de 6,93 días. La pendiente aumenta porque el mismo coeficiente se aplica sobre una base de usuarios mayor. El gráfico llega hasta el día 20. La cifra del día 100 se obtiene extendiendo la fórmula y sirve para discutir el supuesto de crecimiento ilimitado.
+:::
+
+## 1.1 · ¿Cuándo se enfría más rápido el servidor?
+
+:::: {.columns}
+::: {.column width="46%"}
+El servidor comienza a **85 °C** en un ambiente a **25 °C**. La velocidad de enfriamiento depende del exceso de temperatura.
+
+$$\dot T=-0{,}2(T-25)$$
+$$T(t)=25+60e^{-0{,}2t}$$
+
+A los 5 minutos alcanza **47,1 °C**. Conforme se acerca a 25 °C, se enfría más despacio.
+:::
+::: {.column width="54%"}
+```{python}
+temperatura = 25 + 60*np.exp(-0.2*tt)
+curva(tt, temperatura, "Tiempo (minutos)", "Temperatura (°C)",
+      (5, 25 + 60*np.exp(-1)), "47,1 °C", naranja, ambiente=25)
+```
+:::
+::::
+
+::: {.notes}
+Señalar la parte más inclinada, al inicio. La diferencia con el ambiente es entonces de 60 °C y la pendiente inicial vale −12 °C por minuto. Si llamamos y a T − 25, recuperamos la ecuación de la sección 0.6. Ahora lo que tiende a cero es el exceso de temperatura. La línea discontinua marca el equilibrio térmico.
+:::
+
+## 1.1 · Generar las dos curvas {.demostracion}
+
+`linspace` crea 400 instantes. `exp` calcula usuarios y temperatura en cada uno. `subplots` dibuja ambos modelos y `axhline` marca los 25 °C del ambiente.
+
+```{python}
+#| label: nb-1-1
+#| echo: true
+#| code-overflow: wrap
+#| eval: false
+tt = np.linspace(0, 20, 400)
+usuarios = 1000*np.exp(0.1*tt)
+Tserv = 25 + 60*np.exp(-0.2*tt)
+fig, ax = plt.subplots(1, 2, figsize=(10, 3.2))
+ax[0].plot(tt, usuarios, color=ROJO, lw=2); ax[0].set_title("Usuarios: ẋ = 0,1x"); ax[0].set_xlabel("días")
+ax[1].plot(tt, Tserv, color=NARANJA, lw=2); ax[1].axhline(25, color=GRIS, ls="--"); ax[1].set_title("Servidor: Ṫ = −0,2(T − 25)"); ax[1].set_xlabel("minutos")
+plt.tight_layout(); plt.show()
+print(f"Usuarios a los 10 días: {1000*np.e:.0f};  a los 100 días: {1000*np.exp(10):,.0f} (¡poco realista!)")
+print(f"Temperatura a los 5 minutos: {25 + 60*np.exp(-1):.1f} °C")
+ok("ejemplos 1 y 2 reproducidos")
+```
+
+<a class="accion" href="#salida-1-1" data-modo="ejecutar" data-seccion="1.1">▶ Ejecutar código</a>
+<a class="accion secundaria" href="#salida-1-1" data-modo="guardada">Ver salida guardada</a>
+
+::: {.notes}
+Al ejecutar, muestre la salida y luego señale las curvas. El eje horizontal representa días para los usuarios y minutos para el servidor. Los valores impresos se evalúan directamente con las fórmulas.
+:::
+
+## 1.1 · Resultado {#salida-1-1 .resultado}
+
+<p class="estado-python" role="status">Salida guardada al generar la presentación</p>
+<div class="respuesta-python"></div>
+
+```{python}
+#| echo: false
+exec(codigo_celda("nb-1-1"))
+```

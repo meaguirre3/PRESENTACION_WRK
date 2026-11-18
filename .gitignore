@@ -1,0 +1,5 @@
+.quarto/
+*.quarto_ipynb*
+_quarto_internal_*
+.Rhistory
+__pycache__/

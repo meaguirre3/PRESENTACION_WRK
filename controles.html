@@ -1,0 +1,105 @@
+<script>
+(() => {
+  let python;
+  let runNumber = 0;
+  const cdn = "https://cdn.jsdelivr.net/pyodide/v0.28.3/full/";
+  async function cargarPython() {
+    if (!window.loadPyodide) {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = cdn + "pyodide.js";
+        script.onload = resolve;
+        script.onerror = () => reject(new Error("No se pudo descargar Python. Para trabajar sin Internet, abre Presentar.cmd."));
+        document.head.append(script);
+      });
+    }
+    const py = await loadPyodide({indexURL: cdn});
+    await py.loadPackage(["numpy", "scipy", "sympy", "matplotlib"]);
+    return py;
+  }
+  async function calcular(id, codigo, estado) {
+    if (location.protocol === "http:" && ["127.0.0.1", "localhost"].includes(location.hostname)) {
+      let response;
+      try { response = await fetch("/ejecutar/" + id, {method: "POST"}); } catch {}
+      if (response?.headers.get("Content-Type")?.includes("application/json")) {
+        const data = await response.json();
+        if (response.ok) return data;
+        if (data.error) throw new Error(data.error);
+      }
+    }
+    estado.textContent = "Cargando Python y las bibliotecas para ejecutar la celda en este navegador…";
+    python ??= cargarPython().catch(error => { python = null; throw error; });
+    const py = await python;
+    estado.textContent = "Ejecutando la celda en Python…";
+    const ns = py.toPy({codigo});
+    try {
+      const json = await py.runPythonAsync(`
+import base64, contextlib, io, json
+import numpy as np
+import sympy as sp
+import matplotlib
+matplotlib.use("agg")
+import matplotlib.pyplot as plt
+from scipy.integrate import solve_ivp
+from scipy.optimize import minimize
+t = sp.symbols("t")
+ROJO, NARANJA, GRIS = "#B23A3A", "#C8701E", "#8A94A0"
+plt.rcParams.update({"figure.dpi": 110, "axes.grid": True, "grid.alpha": 0.25,
+                     "axes.spines.top": False, "axes.spines.right": False})
+def ok(msg):
+    print("✔", msg)
+salida = io.StringIO()
+imagenes = []
+try:
+    with contextlib.redirect_stdout(salida):
+        exec(codigo)
+    for numero in plt.get_fignums():
+        buf = io.BytesIO()
+        plt.figure(numero).savefig(buf, format="png", bbox_inches="tight")
+        imagenes.append(base64.b64encode(buf.getvalue()).decode())
+finally:
+    plt.close("all")
+json.dumps({"texto": salida.getvalue(), "graficas": imagenes})
+`, {globals: ns});
+      return JSON.parse(json);
+    } finally { ns.destroy(); }
+  }
+  document.addEventListener("click", async e => {
+    const link = e.target.closest("a[data-modo]");
+    if (!link || !window.Reveal) return;
+    const destino = document.getElementById(link.hash.slice(1));
+    if (!destino) return;
+    e.preventDefault();
+    const actual = ++runNumber;
+    const estado = destino.querySelector(".estado-python");
+    const guardada = destino.querySelector(".cell");
+    const panel = destino.querySelector(".respuesta-python");
+    panel.replaceChildren();
+    const ejecutar = link.dataset.modo === "ejecutar";
+    guardada.hidden = ejecutar;
+    estado.textContent = ejecutar ? "Ejecutando la celda en Python…" : "Salida guardada al generar la presentación";
+    Reveal.slide(Reveal.getIndices(destino).h);
+    if (!ejecutar) return;
+    try {
+      const fuente = link.closest("section").querySelector("pre.sourceCode code");
+      const datos = await calcular(link.dataset.seccion, fuente.textContent, estado);
+      if (actual !== runNumber) return;
+      const pre = document.createElement("pre");
+      pre.textContent = datos.texto;
+      panel.append(pre);
+      for (const png of datos.graficas) {
+        const img = document.createElement("img");
+        img.src = "data:image/png;base64," + png;
+        img.alt = "Curvas de usuarios y temperatura generadas en esta ejecución";
+        panel.append(img);
+      }
+      estado.textContent = "Ejecución completada · " + new Date().toLocaleTimeString();
+    } catch (error) {
+      if (actual !== runNumber) return;
+      guardada.hidden = false;
+      estado.textContent = "Se muestra la salida guardada. Error de ejecución: " + error.message;
+    }
+  }, true);
+})();
+</script>
+

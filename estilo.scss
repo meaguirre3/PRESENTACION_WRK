@@ -1,0 +1,36 @@
+/*-- scss:defaults --*/
+$body-bg: #f8f7f2;
+$body-color: #192f42;
+$link-color: #006659;
+$presentation-heading-color: #12394a;
+$font-family-sans-serif: "Segoe UI", Arial, sans-serif;
+$presentation-heading-font: Georgia, serif;
+$presentation-font-size-root: 33px;
+/*-- scss:rules --*/
+.reveal h2 { font-weight: normal; font-size: 1.6em; text-align: left; margin-bottom: .5em; }
+.reveal .slides { text-align: left; }
+.reveal strong { color: #006659; }
+.reveal .subtitle { color: #006659; }
+.reveal section#title-slide { text-align: left; }
+.reveal section#title-slide h1 { font-size: 2.4em; max-width: 17em; }
+.reveal .slides section .column p:first-child { margin-top: 0; }
+.reveal table { width: 88%; margin: .55em auto; font-size: .88em; }
+.reveal table th { color: #006659; }
+.reveal .cell-output-stdout { color: #006659; font-size: .88em; }
+.reveal .cell-output-stdout pre { border-left: 4px solid #168575; padding: .35em .8em; }
+.reveal .sourceCode { box-sizing: border-box; max-width: 100%; }
+.reveal .cell pre, .reveal .cell pre code { box-sizing: border-box; width: 100%; max-width: 100%; }
+
+.reveal .demostracion h2 { font-size: 1.42em; margin-bottom: .3em; }
+.reveal .demostracion p { font-size: .83em; line-height: 1.25; margin: .4em 0; }
+.reveal .demostracion pre.sourceCode { font-size: 19px; line-height: 1.25; padding: .45em .65em; margin: .5em 0; }
+.reveal .demostracion pre.sourceCode code { white-space: pre-wrap; overflow-wrap: anywhere; max-height: none; }
+.reveal .demostracion .cell-output { display: none; }
+
+.reveal .accion { display:inline-block; padding:.44em .85em; margin:.25em .35em 0 0; border:2px solid #006659; border-radius:5px; color:white; background:#006659; font-size:24px; text-decoration:none; cursor:pointer; }
+.reveal .accion.secundaria { color:#006659; background:white; }
+.reveal .accion:hover,.reveal .accion:focus { outline:3px solid #ba7600; outline-offset:2px; }
+.reveal .resultado .estado-python { font-size:24px; color:#006659; }
+.reveal .resultado pre { white-space:pre-wrap; font-size:25px; line-height:1.4; margin:.4em 0; }
+.reveal .resultado .cell-output-display img,.reveal .resultado .respuesta-python img { max-height:320px; width:auto; max-width:100%; }
+.reveal .resultado .cell[hidden] { display:none!important; }
